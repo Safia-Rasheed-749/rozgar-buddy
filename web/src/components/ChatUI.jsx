@@ -7,8 +7,12 @@ export default function ChatUI() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [userProfile, setUserProfile] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  // Fetch user profile on load
+  const API_URL = "https://careerchatapi-hfure6sseq-uc.a.run.app";
+ // 🔗 Replace with your actual URL if different
+
+  // Fetch user profile
   useEffect(() => {
     const fetchProfile = async () => {
       const user = auth.currentUser;
@@ -16,38 +20,46 @@ export default function ChatUI() {
 
       const docRef = doc(db, "profiles", user.uid);
       const docSnap = await getDoc(docRef);
-
-      if (docSnap.exists()) {
-        setUserProfile(docSnap.data());
-      } else {
-        setUserProfile({ grade: "N/A", interests: "N/A" });
-      }
+      setUserProfile(docSnap.exists() ? docSnap.data() : null);
     };
     fetchProfile();
   }, []);
 
-  const handleSend = (e) => {
+  const handleSend = async (e) => {
     e.preventDefault();
     if (!input.trim()) return;
 
-    // Add user message
     const newMessages = [...messages, { sender: "user", text: input }];
-
-    // Generate bot reply based on profile
-    let botReply = "Sorry, I don't understand.";
-    if (userProfile) {
-      if (input.toLowerCase().includes("career")) {
-        botReply = `Based on your grade (${userProfile.grade}) and interests (${userProfile.interests}), you could explore careers like ${
-          userProfile.interests || "web development, engineering, or design"
-        }.`;
-      } else {
-        botReply = "You said: " + input;
-      }
-    }
-
-    newMessages.push({ sender: "bot", text: botReply });
     setMessages(newMessages);
     setInput("");
+    setLoading(true);
+
+    try {
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: input }),
+      });
+
+      const data = await response.json();
+
+      if (data.reply) {
+        setMessages([...newMessages, { sender: "bot", text: data.reply }]);
+      } else {
+        setMessages([
+          ...newMessages,
+          { sender: "bot", text: "⚠️ No response from server." },
+        ]);
+      }
+    } catch (error) {
+      console.error("Error:", error);
+      setMessages([
+        ...newMessages,
+        { sender: "bot", text: "⚠️ Server error. Try again later." },
+      ]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -80,6 +92,7 @@ export default function ChatUI() {
             <b>{msg.sender === "user" ? "You" : "Buddy"}:</b> {msg.text}
           </p>
         ))}
+        {loading && <p>🤔 Buddy is thinking...</p>}
       </div>
 
       <form onSubmit={handleSend}>
@@ -107,8 +120,9 @@ export default function ChatUI() {
             borderRadius: "8px",
             cursor: "pointer",
           }}
+          disabled={loading}
         >
-          Send
+          {loading ? "Sending..." : "Send"}
         </button>
       </form>
     </div>
